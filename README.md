@@ -20,6 +20,7 @@ Seluruh aplikasi berjalan sebagai satu **Cloudflare Worker** — tidak perlu ser
 | 👤 Manajemen Pengguna  | Admin bisa membuat & menghapus akun pengguna                         |
 | 🔐 Login Aman          | Session berbasis cookie + CAPTCHA Cloudflare Turnstile               |
 | 🤖 Notifikasi Telegram | Email masuk langsung dikirim ke chat Telegram Anda                   |
+| 🔑 Public API Key v1 | Akses API machine-to-machine (`create_user`, `list_user`, `user_mailbox`, `read_email`) |
 | 🛡️ Keamanan Password | Password disimpan dalam format hash PBKDF2-SHA256 (bukan teks biasa) |
 | 🗄️ Database Gratis   | Menggunakan Cloudflare D1 (SQLite serverless)                        |
 | 🌐 Multi-User          | Mendukung role Admin dan Member dengan hak akses berbeda             |
@@ -60,205 +61,6 @@ Pastikan hal-hal berikut sudah tersedia di komputer Anda:
 
 ---
 
-## 🚀 Panduan Setup Dari Awal (Langkah demi Langkah)
-
-### Langkah 1 — Clone / Download Project
-
-```bash
-git clone https://github.com/kelasdev/cloud-mail-flare.git
-cd cloud-mail-flare
-```
-
-> Atau download ZIP dari GitHub lalu ekstrak dan buka foldernya di terminal.
-
----
-
-### Langkah 2 — Install Semua Dependency
-
-Jalankan perintah ini di dalam folder project:
-
-```bash
-pnpm install
-```
-
-> Ini akan mengunduh semua library yang dibutuhkan. Tunggu hingga selesai.
-
----
-
-### Langkah 3 — Login ke Cloudflare via Wrangler
-
-Wrangler adalah alat CLI resmi Cloudflare. Login agar Wrangler bisa berkomunikasi dengan akun Cloudflare Anda:
-
-```bash
-pnpm exec wrangler login
-```
-
-> Browser akan terbuka dan meminta Anda login ke Cloudflare. Klik **Authorize** jika diminta.
-
----
-
-### Langkah 4 — Buat Database D1 di Cloudflare
-
-```bash
-pnpm exec wrangler d1 create mailflarecloud-db
-```
-
-Perintah ini akan menampilkan output seperti:
-
-```
-✅ Successfully created DB 'mailflarecloud-db'
-...
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-```
-
-**Catat `database_id` tersebut**, akan dipakai di langkah berikutnya.
-
----
-
-### Langkah 5 — Konfigurasi `wrangler.toml`
-
-Salin file contoh konfigurasi:
-
-```bash
-# Windows (Command Prompt / PowerShell)
-copy wrangler.toml.example wrangler.toml
-
-# Mac / Linux
-cp wrangler.toml.example wrangler.toml
-```
-
-Buka file `wrangler.toml` dengan teks editor dan isi bagian yang ditandai `<...>`:
-
-```toml
-name = "mailflare-web"
-...
-
-[[routes]]
-pattern = "<app-domain>"       # ← Ganti dengan subdomain Anda, contoh: mail.example.com
-custom_domain = true
-
-[vars]
-MAILFLARE_USER_DOMAIN = "<your-root-email-domain>"   # ← Domain inbox email, contoh: example.com
-MAILFLARE_NOTIFY_URL = "https://<app-domain>"        # ← URL aplikasi, contoh: https://mail.example.com
-
-[[d1_databases]]
-binding = "DB"
-database_name = "mailflarecloud-db"
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"  # ← Hasil dari Langkah 4
-```
-
----
-
-### Langkah 6 — Setup Environment Variables Lokal
-
-Salin file contoh environment:
-
-```bash
-# Windows
-copy .dev.vars.example .dev.vars
-
-# Mac / Linux
-cp .dev.vars.example .dev.vars
-```
-
-Buka `.dev.vars` dan ubah nilai `SETUP_TOKEN` menjadi password rahasia pilihan Anda:
-
-```env
-# Wajib diisi — ini adalah "kunci" untuk membuat akun admin pertama
-SETUP_TOKEN="Password_Rahasia_Anda_Disini!"
-
-# CAPTCHA (nilai di bawah ini sudah siap untuk testing lokal, jangan diubah dulu)
-TURNSTILE_SITE_KEY="1x00000000000000000000AA"
-TURNSTILE_SECRET_KEY="1x0000000000000000000000000000000AA"
-
-# Telegram (opsional, bisa diisi nanti)
-TELEGRAM_BOT_TOKEN=""
-TELEGRAM_WEBHOOK_SECRET=""
-TELEGRAM_INTERNAL_SECRET=""
-```
-
-> ⚠️ **Jangan pernah upload file `.dev.vars` ke GitHub!** File ini sudah tercantum di `.gitignore`.
-
----
-
-### Langkah 7 — Inisialisasi Database Lokal
-
-Jalankan schema SQL ke database D1 lokal:
-
-```bash
-pnpm exec wrangler d1 execute mailflarecloud-db --local --file ./schema.sql
-```
-
-> Perintah ini membuat semua tabel yang dibutuhkan aplikasi di database lokal.
-
----
-
-### Langkah 8 — Jalankan Aplikasi Secara Lokal
-
-```bash
-pnpm cf:dev
-```
-
-Tunggu hingga muncul pesan seperti:
-
-```
-✅ Starting local server...
-http://127.0.0.1:8787
-```
-
-Buka browser dan akses **http://127.0.0.1:8787** — aplikasi sudah berjalan! 🎉
-
----
-
-### Langkah 9 — Buat Akun Admin Pertama
-
-1. Buka **http://127.0.0.1:8787** di browser
-2. Di halaman login, isi:
-   - **Email**: alamat email yang Anda inginkan (contoh: `admin@example.com`)
-   - **Password**: password pilihan Anda
-   - **Setup Token**: isi dengan nilai `SETUP_TOKEN` yang ada di file `.dev.vars`
-3. Klik **Login** — akun admin pertama akan otomatis dibuat!
-
-> 💡 Setup Token hanya diperlukan sekali, saat membuat akun pertama. Setelah itu, login biasa tidak memerlukan field ini.
-
----
-
-## 🌍 Deploy ke Production (Cloudflare)
-
-Setelah berhasil di lokal, Anda bisa deploy ke Cloudflare agar bisa diakses dari internet.
-
-### Langkah Singkat
-
-**1. Set secrets di Cloudflare** (jangan gunakan `.dev.vars` untuk production):
-
-```bash
-pnpm exec wrangler secret put SETUP_TOKEN
-pnpm exec wrangler secret put TURNSTILE_SITE_KEY
-pnpm exec wrangler secret put TURNSTILE_SECRET_KEY
-```
-
-**2. Inisialisasi database production:**
-
-```bash
-pnpm exec wrangler d1 execute mailflarecloud-db --remote --file ./schema.sql
-```
-
-**3. Deploy ke Cloudflare:**
-
-```bash
-pnpm run deploy
-```
-
-**4. Setup Email Routing di Cloudflare Dashboard:**
-
-- Masuk ke **Cloudflare Dashboard → Email → Email Routing**
-- Buat rule: **Catch-all** → **Worker** → pilih `mailflare-web`
-
-> 📖 Untuk panduan lengkap deployment beserta konfigurasi domain dan troubleshooting, baca:
-> **[docs/deploy-fullstack-cloudflare.md](./docs/deploy-fullstack-cloudflare.md)**
-
----
-
 ## 🔑 Peran Pengguna (Roles)
 
 | Role             | Akses                                                              |
@@ -287,59 +89,14 @@ pnpm run deploy
 | `GET`    | `/api/dashboard`       | Data dashboard (Admin)            |
 | `GET`    | `/api/worker-settings` | Baca konfigurasi worker (Admin)   |
 | `PATCH`  | `/api/worker-settings` | Update konfigurasi worker (Admin) |
-
----
-
-## 🤖 Integrasi Notifikasi Telegram (Opsional)
-
-Fitur ini memungkinkan Anda menerima notifikasi di Telegram setiap ada email masuk.
-
-### Cara Setup
-
-1. **Buat bot Telegram** di [@BotFather](https://t.me/BotFather) dan catat token bot.
-2. **Isi environment variables** di `.dev.vars` (lokal) atau via `wrangler secret` (production):
-
-   ```env
-   TELEGRAM_BOT_TOKEN="token_dari_botfather"
-   TELEGRAM_WEBHOOK_SECRET="string_acak_32_karakter"
-   TELEGRAM_INTERNAL_SECRET="string_acak_lain_32_karakter"
-
-   # Opsional: whitelist Telegram User ID (fallback awal sebelum diatur dari UI)
-   TELEGRAM_ALLOWED_IDS="123456789,987654321"
-   ```
-3. **Atur Allowed IDs (Whitelist User Telegram)**
-
-   `Allowed IDs` adalah daftar **Telegram User ID** yang diizinkan mengirim command ke bot. Hanya ID yang terdaftar yang bisa menggunakan command seperti `adduser`, `listuser`, `inbox`, dll.
-
-   **Cara mendapatkan Telegram User ID Anda:**
-
-   - Buka Telegram, cari bot [@userinfobot](https://t.me/userinfobot)
-   - Kirim pesan ke bot tersebut — ia akan membalas dengan User ID Anda (berupa angka, contoh: `123456789`)
-
-   **Dua cara mengatur Allowed IDs:**
-
-   | Cara                                   | Keterangan                                                                                                                                     |
-   | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-   | **Dari UI (direkomendasikan)**   | Login sebagai admin → buka**/worker/settings** → isi field **Allowed IDs (DB)** dengan ID yang dipisah koma                      |
-   | **Dari env var (fallback awal)** | Isi `TELEGRAM_ALLOWED_IDS` di `.dev.vars` atau `wrangler secret`. Ini hanya dipakai jika DB belum pernah menyimpan nilai `allowed_ids` |
-
-
-   > ⚠️ **Penting:** Setelah Anda menyimpan `Allowed IDs` dari halaman UI (meski dikosongkan), sistem akan selalu menggunakan nilai dari **database**, bukan dari env var. Jadi pastikan nilainya benar sebelum disimpan.
-   >
-4. **Setelah deploy**, daftarkan webhook bot:
-
-   ```bash
-   pnpm telegram:webhook:set -- \
-     --token "<BOT_TOKEN>" \
-     --url "<WORKER_URL>/api/telegram/webhook" \
-     --secret "<WEBHOOK_SECRET>" \
-     --allowed-updates "message,callback_query"
-   ```
-5. Di halaman **Worker Settings** aplikasi, isi **Chat ID** Telegram tujuan notifikasi.
-
-> 📖 Panduan lengkap tersedia di: **[docs/integrasi-telegram-bot.md](./docs/integrasi-telegram-bot.md)**
-
-> ⚠️ Untuk testing lokal dengan Telegram, Anda perlu alat seperti [ngrok](https://ngrok.com/) karena Telegram harus bisa mengakses URL webhook Anda dari internet.
+| `GET`    | `/api/worker-settings/api-key` | Status API key aktif (Admin) |
+| `POST`   | `/api/worker-settings/api-key/generate` | Generate API key baru (Admin) |
+| `POST`   | `/api/worker-settings/api-key/regenerate` | Rotate/regenerate API key (Admin) |
+| `POST`   | `/api/public/v1/create_user` | Public API: create user (API key) |
+| `GET`    | `/api/public/v1/list_user` | Public API: list user (API key) |
+| `GET`    | `/api/public/v1/user_mailbox` | Public API: inbox by username (API key) |
+| `GET`    | `/api/public/v1/read_email` | Public API: read email rendered text (API key) |
+| `GET`    | `/api/public/v1/read_emai` | Alias kompatibilitas untuk `read_email` |
 
 ---
 
@@ -352,6 +109,7 @@ Fitur ini memungkinkan Anda menerima notifikasi di Telegram setiap ada email mas
 | `pnpm check`                   | Cek error TypeScript / Svelte                                  |
 | `pnpm build`                   | Build aplikasi untuk production                                |
 | `pnpm run deploy`              | Build + upload ke Cloudflare                                   |
+| `pnpm smoke:api-key:v1`        | Smoke test otomatis API key + public API v1 (lokal)           |
 | `pnpm telegram:webhook:set`    | Daftarkan webhook Telegram                                     |
 | `pnpm telegram:webhook:delete` | Hapus webhook Telegram                                         |
 | `pnpm telegram:webhook:info`   | Cek info webhook Telegram                                      |
@@ -420,6 +178,7 @@ cloud-mail-flare/
 | [deploy-fullstack-cloudflare.md](./docs/deploy-fullstack-cloudflare.md) | Panduan deployment lengkap ke production |
 | [integrasi-telegram-bot.md](./docs/integrasi-telegram-bot.md)           | Setup bot Telegram secara detail         |
 | [member-inbox-only.md](./docs/member-inbox-only.md)                     | Penjelasan mode Member / inbox-only      |
+| [api-key-public-api.md](./docs/api-key-public-api.md)                   | Spesifikasi + UAT terpadu API key & public API v1 |
 
 ---
 

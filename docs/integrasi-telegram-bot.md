@@ -25,6 +25,7 @@ Integrasi Telegram di project ini menyediakan:
 - `readmail <email_id>`
 - `access`
 - `reset <username>`
+- `apikey [regen]`
 
 4. Login access code (one-time):
 - Command `access` di Telegram membuat kode sekali pakai.
@@ -100,6 +101,7 @@ Halaman worker settings sekarang sudah terhubung dengan runtime Telegram untuk:
 Gunakan `wrangler secret` untuk nilai rahasia (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_INTERNAL_SECRET`).
 `TELEGRAM_ALLOWED_IDS`, `TELEGRAM_DEFAULT_CHAT_ID`, dan `TELEGRAM_TEST_CHAT_ID` opsional sebagai fallback awal.
 `MAILFLARE_NOTIFY_URL` wajib untuk forward event Email Routing ke endpoint `/api/telegram/notify-email`.
+`TELEGRAM_INTERNAL_SECRET` dipakai untuk mengamankan akses endpoint `/api/telegram/notify-email` dari caller non-login eksternal.
 
 ### Key `worker_settings` yang dipakai
 
@@ -206,6 +208,7 @@ Semua command diproses oleh webhook route `POST /api/telegram/webhook`.
 | `readmail <email_id>` | Baca detail email |
 | `access` | Buat one-time login code |
 | `reset <username>` | Reset password user |
+| `apikey [regen]` | Generate/regenerate API key |
 | `/help` atau `/start` | Tampilkan daftar command |
 
 ### 5.1 `adduser <username>`
@@ -260,11 +263,21 @@ Membuat access code one-time format `MF-XXXX-XXXX-XXXX`.
 
 ### 5.6 `reset <username>`
 
-### 5.7 `/help` dan `/start`
+Reset password user lalu mengirim password baru dalam blok monospace.
+
+### 5.7 `apikey [regen]`
+
+- `apikey`:
+  - Jika belum ada key aktif, bot akan generate API key baru (prefix `cmf_v1_`) dan mengirim plaintext sekali.
+  - Jika key aktif sudah ada, bot menampilkan status key aktif dan instruksi `apikey regen`.
+- `apikey regen`:
+  - Mencabut key aktif lama lalu generate key baru.
+  - Plaintext key baru dikirim sekali.
+- Jika API key dibuat dari admin web (`/worker/settings`), sistem juga mengirim notifikasi API key ke target Telegram aktif.
+
+### 5.8 `/help` dan `/start`
 
 Bot akan membalas dengan daftar semua command yang tersedia. Respons yang sama juga ditampilkan jika user mengirim command yang tidak dikenal.
-
-Reset password user lalu mengirim password baru dalam blok monospace.
 
 ## 6) Inline Keyboard Email Actions
 
@@ -565,7 +578,7 @@ Periksa:
 ## 13) Catatan Operasional
 
 - Endpoint `notify-email` adalah entry point notifikasi inbound.
-- Untuk skenario Cloudflare Email Routing, handler `email()` di Worker akan mem-forward payload ke endpoint tersebut secara otomatis (butuh `MAILFLARE_NOTIFY_URL` + `TELEGRAM_INTERNAL_SECRET`).
+- Untuk skenario Cloudflare Email Routing, handler `email()` di Worker akan mem-forward payload ke endpoint tersebut secara otomatis. Persist email ke DB tetap berjalan walau `TELEGRAM_INTERNAL_SECRET` kosong.
 - Handler `email()` memvalidasi recipient ke DB terlebih dulu; recipient tidak dikenal akan ditolak.
-- Jika ingin memaksa keamanan lebih ketat, isi `webhook_secret` dan `TELEGRAM_INTERNAL_SECRET` wajib di environment production.
+- Jika endpoint `/api/telegram/notify-email` akan dipanggil dari service eksternal/non-login, isi `TELEGRAM_INTERNAL_SECRET` dan kirim header `x-mailflare-telegram-secret`.
 - Gunakan HTTPS public URL untuk webhook Telegram production.
